@@ -1,14 +1,66 @@
 <?php
-/***********************************************************************************************************************
- * @package		Robi Shop
- * @author		Zahirul Hasan<zhasan@bdipo.com>
- * @copyright	Copyright (c) 2018 - 2019 @ Nascenia (https://www.nascenia.com/)
- **********************************************************************************************************************/
+namespace Pelago;
 
-namespace Digired\Override\Pelago;
-
-class Emogrifier extends \Pelago\Emogrifier
+/**
+ * This class provides functions for converting CSS styles into inline style attributes in your HTML code.
+ *
+ * For more information, please see the README.md file.
+ *
+ * @author Cameron Brooks
+ * @author Jaime Prado
+ * @author Roman Ožana <ozana@omdesign.cz>
+ */
+class Emogrifier
 {
+    /**
+     * @var string
+     */
+    const ENCODING = 'UTF-8';
+
+    /**
+     * @var int
+     */
+    const CACHE_KEY_CSS = 0;
+
+    /**
+     * @var int
+     */
+    const CACHE_KEY_SELECTOR = 1;
+
+    /**
+     * @var int
+     */
+    const CACHE_KEY_XPATH = 2;
+
+    /**
+     * @var int
+     */
+    const CACHE_KEY_CSS_DECLARATION_BLOCK = 3;
+
+    /**
+     * for calculating nth-of-type and nth-child selectors
+     *
+     * @var int
+     */
+    const INDEX = 0;
+
+    /**
+     * for calculating nth-of-type and nth-child selectors
+     *
+     * @var int
+     */
+    const MULTIPLIER = 1;
+
+    /**
+     * @var string
+     */
+    const ID_ATTRIBUTE_MATCHER = '/(\\w+)?\\#([\\w\\-]+)/';
+
+    /**
+     * @var string
+     */
+    const CLASS_ATTRIBUTE_MATCHER = '/(\\w+|[\\*\\]])?((\\.[\\w\\-]+)+)/';
+
     /**
      * @var string
      */
@@ -22,24 +74,24 @@ class Emogrifier extends \Pelago\Emogrifier
     /**
      * @var string[]
      */
-    private $unprocessableHtmlTags = ['wbr'];
+    private $unprocessableHtmlTags = array('wbr');
 
     /**
      * @var array[]
      */
-    private $caches = [
-        self::CACHE_KEY_CSS => [],
-        self::CACHE_KEY_SELECTOR => [],
-        self::CACHE_KEY_XPATH => [],
-        self::CACHE_KEY_CSS_DECLARATION_BLOCK => [],
-    ];
+    private $caches = array(
+        self::CACHE_KEY_CSS => array(),
+        self::CACHE_KEY_SELECTOR => array(),
+        self::CACHE_KEY_XPATH => array(),
+        self::CACHE_KEY_CSS_DECLARATION_BLOCK => array(),
+    );
 
     /**
      * the visited nodes with the XPath paths as array keys
      *
      * @var \DOMNode[]
      */
-    private $visitedNodes = [];
+    private $visitedNodes = array();
 
     /**
      * the styles to apply to the nodes with the XPath paths as array keys for the outer array
@@ -47,7 +99,7 @@ class Emogrifier extends \Pelago\Emogrifier
      *
      * @var array[]
      */
-    private $styleAttributesForNodes = [];
+    private $styleAttributesForNodes = array();
 
     /**
      * Determines whether the "style" attributes of tags in the the HTML passed to this class should be preserved.
@@ -68,6 +120,42 @@ class Emogrifier extends \Pelago\Emogrifier
      * @var bool
      */
     private $isStyleBlocksParsingEnabled = true;
+
+    /**
+     * This attribute applies to the case where you want to preserve your original text encoding.
+     *
+     * By default, emogrifier translates your text into HTML entities for two reasons:
+     *
+     * 1. Because of client incompatibilities, it is better practice to send out HTML entities
+     *    rather than unicode over email.
+     *
+     * 2. It translates any illegal XML characters that DOMDocument cannot work with.
+     *
+     * If you would like to preserve your original encoding, set this attribute to true.
+     *
+     * @var bool
+     */
+    public $preserveEncoding = false;
+
+    /**
+     * The constructor.
+     *
+     * @param string $html the HTML to emogrify, must be UTF-8-encoded
+     * @param string $css the CSS to merge, must be UTF-8-encoded
+     */
+    public function __construct($html = '', $css = '')
+    {
+        $this->setHtml($html);
+        $this->setCss($css);
+    }
+
+    /**
+     * The destructor.
+     */
+    public function __destruct()
+    {
+        $this->purgeVisitedNodes();
+    }
 
     /**
      * Sets the HTML to emogrify.
@@ -145,7 +233,7 @@ class Emogrifier extends \Pelago\Emogrifier
             // process the CSS file for selectors and definitions
             preg_match_all('/(?:^|[\\s^{}]*)([^{]+){([^}]*)}/mis', $cssParts['css'], $matches, PREG_SET_ORDER);
 
-            $allSelectors = [];
+            $allSelectors = array();
             foreach ($matches as $key => $selectorString) {
                 // if there is a blank definition, skip
                 if (!strlen(trim($selectorString[2]))) {
@@ -162,16 +250,16 @@ class Emogrifier extends \Pelago\Emogrifier
                         continue;
                     }
 
-                    $allSelectors[] = ['selector' => trim($selector),
-                                            'attributes' => trim($selectorString[2]),
-                                            // keep track of where it appears in the file, since order is important
-                                            'line' => $key,
-                    ];
+                    $allSelectors[] = array('selector' => trim($selector),
+                        'attributes' => trim($selectorString[2]),
+                        // keep track of where it appears in the file, since order is important
+                        'line' => $key,
+                    );
                 }
             }
 
             // now sort the selectors by precedence
-            usort($allSelectors, [$this,'sortBySelectorPrecedence']);
+            usort($allSelectors, array($this,'sortBySelectorPrecedence'));
 
             $this->caches[self::CACHE_KEY_CSS][$cssKey] = $allSelectors;
         }
@@ -187,7 +275,7 @@ class Emogrifier extends \Pelago\Emogrifier
                     // break it up into an associative array
                     $oldStyleDeclarations = $this->parseCssDeclarationBlock($node->getAttribute('style'));
                 } else {
-                    $oldStyleDeclarations = [];
+                    $oldStyleDeclarations = array();
                 }
                 $newStyleDeclarations = $this->parseCssDeclarationBlock($value['attributes']);
                 $node->setAttribute(
@@ -214,7 +302,7 @@ class Emogrifier extends \Pelago\Emogrifier
         if ($nodesWithStyleDisplayNone->length > 0) {
             /** @var \DOMNode $node */
             foreach ($nodesWithStyleDisplayNone as $node) {
-                if ($node->parentNode && is_callable([$node->parentNode,'removeChild'])) {
+                if ($node->parentNode && is_callable(array($node->parentNode,'removeChild'))) {
                     $node->parentNode->removeChild($node);
                 }
             }
@@ -274,17 +362,17 @@ class Emogrifier extends \Pelago\Emogrifier
      */
     private function clearCache($key)
     {
-        $allowedCacheKeys = [
+        $allowedCacheKeys = array(
             self::CACHE_KEY_CSS,
             self::CACHE_KEY_SELECTOR,
             self::CACHE_KEY_XPATH,
             self::CACHE_KEY_CSS_DECLARATION_BLOCK,
-        ];
+        );
         if (!in_array($key, $allowedCacheKeys, true)) {
             throw new \InvalidArgumentException('Invalid cache key: ' . $key, 1391822035);
         }
 
-        $this->caches[$key] = [];
+        $this->caches[$key] = array();
     }
 
     /**
@@ -294,8 +382,8 @@ class Emogrifier extends \Pelago\Emogrifier
      */
     private function purgeVisitedNodes()
     {
-        $this->visitedNodes = [];
-        $this->styleAttributesForNodes = [];
+        $this->visitedNodes = array();
+        $this->styleAttributesForNodes = array();
     }
 
     /**
@@ -401,6 +489,21 @@ class Emogrifier extends \Pelago\Emogrifier
 
 
     /**
+     * Copies the media part from CSS array parts to $xmlDocument.
+     *
+     * @param string[] $cssParts
+     * @param \DOMDocument $xmlDocument
+     *
+     * @return void
+     */
+    public function copyCssWithMediaToStyleNode(array $cssParts, \DOMDocument $xmlDocument)
+    {
+        if (isset($cssParts['media']) && $cssParts['media'] !== '') {
+            $this->addStyleElementToDocument($xmlDocument, $cssParts['media']);
+        }
+    }
+
+    /**
      * Returns CSS content.
      *
      * @param \DOMXPath $xpath
@@ -502,27 +605,25 @@ class Emogrifier extends \Pelago\Emogrifier
         );
 
         // filter the CSS
-        $search = [
+        $search = array(
             // get rid of css comment code
             '/\\/\\*.*\\*\\//sU',
             // strip out any import directives
             '/^\\s*@import\\s[^;]+;/misU',
             // strip remains media enclosures
             '/^\\s*@media\\s[^{]+{(.*)}\\s*}\\s/misU',
-            '/^\\s*@-?[A-Za-z-]+\\s[^{]+{(.*)}\\s*}\\s/misU',
-        ];
+        );
 
-        $replace = [
+        $replace = array(
             '',
             '',
             '',
-            '',
-        ];
+        );
 
         // clean CSS before output
         $css = preg_replace($search, $replace, $css);
 
-        return ['css' => $css, 'media' => $media];
+        return array('css' => $css, 'media' => $media);
     }
 
     /**
@@ -532,7 +633,7 @@ class Emogrifier extends \Pelago\Emogrifier
      */
     private function createXmlDocument()
     {
-        $xmlDocument = new \DOMDocument();
+        $xmlDocument = new \DOMDocument;
         $xmlDocument->encoding = self::ENCODING;
         $xmlDocument->strictErrorChecking = false;
         $xmlDocument->formatOutput = true;
@@ -599,7 +700,7 @@ class Emogrifier extends \Pelago\Emogrifier
             $precedence = 0;
             $value = 100;
             // ids: worth 100, classes: worth 10, elements: worth 1
-            $search = ['\\#','\\.',''];
+            $search = array('\\#','\\.','');
 
             foreach ($search as $s) {
                 if (trim($selector) === '') {
@@ -639,7 +740,7 @@ class Emogrifier extends \Pelago\Emogrifier
         $xpathKey = md5($cssSelector);
         if (!isset($this->caches[self::CACHE_KEY_XPATH][$xpathKey])) {
             // returns an Xpath selector
-            $search = [
+            $search = array(
                 // Matches any element that is a child of parent.
                 '/\\s+>\\s+/',
                 // Matches any element that is an adjacent sibling.
@@ -656,8 +757,8 @@ class Emogrifier extends \Pelago\Emogrifier
                 '/(\\w)\\[(\\w+)\\]/',
                 // Matches element with EXACT attribute
                 '/(\\w)\\[(\\w+)\\=[\'"]?(\\w+)[\'"]?\\]/',
-            ];
-            $replace = [
+            );
+            $replace = array(
                 '/',
                 '/following-sibling::*[1]/self::',
                 '//',
@@ -666,18 +767,18 @@ class Emogrifier extends \Pelago\Emogrifier
                 '*[@\\1]',
                 '\\1[@\\2]',
                 '\\1[@\\2="\\3"]',
-            ];
+            );
 
             $cssSelector = '//' . preg_replace($search, $replace, $cssSelector);
 
             $cssSelector = preg_replace_callback(
                 self::ID_ATTRIBUTE_MATCHER,
-                [$this, 'matchIdAttributes'],
+                array($this, 'matchIdAttributes'),
                 $cssSelector
             );
             $cssSelector = preg_replace_callback(
                 self::CLASS_ATTRIBUTE_MATCHER,
-                [$this, 'matchClassAttributes'],
+                array($this, 'matchClassAttributes'),
                 $cssSelector
             );
 
@@ -685,12 +786,12 @@ class Emogrifier extends \Pelago\Emogrifier
             // When we required PHP 5.3, we could do this with closures.
             $cssSelector = preg_replace_callback(
                 '/([^\\/]+):nth-child\\(\\s*(odd|even|[+\\-]?\\d|[+\\-]?\\d?n(\\s*[+\\-]\\s*\\d)?)\\s*\\)/i',
-                [$this, 'translateNthChild'],
+                array($this, 'translateNthChild'),
                 $cssSelector
             );
             $cssSelector = preg_replace_callback(
                 '/([^\\/]+):nth-of-type\\(\s*(odd|even|[+\\-]?\\d|[+\\-]?\\d?n(\\s*[+\\-]\\s*\\d)?)\\s*\\)/i',
-                [$this, 'translateNthOfType'],
+                array($this, 'translateNthOfType'),
                 $cssSelector
             );
 
@@ -717,10 +818,10 @@ class Emogrifier extends \Pelago\Emogrifier
     private function matchClassAttributes(array $match)
     {
         return (strlen($match[1]) ? $match[1] : '*') . '[contains(concat(" ",@class," "),concat(" ","' .
-               implode(
-                   '"," "))][contains(concat(" ",@class," "),concat(" ","',
-                   explode('.', substr($match[2], 1))
-               ) . '"," "))]';
+            implode(
+                '"," "))][contains(concat(" ",@class," "),concat(" ","',
+                explode('.', substr($match[2], 1))
+            ) . '"," "))]';
     }
 
     /**
@@ -792,13 +893,13 @@ class Emogrifier extends \Pelago\Emogrifier
      */
     private function parseNth(array $match)
     {
-        if (in_array(strtolower($match[2]), ['even','odd'], true)) {
+        if (in_array(strtolower($match[2]), array('even','odd'), true)) {
             $index = strtolower($match[2]) === 'even' ? 0 : 1;
-            return [self::MULTIPLIER => 2, self::INDEX => $index];
+            return array(self::MULTIPLIER => 2, self::INDEX => $index);
         } elseif (stripos($match[2], 'n') === false) {
             // if there is a multiplier
             $index = (int) str_replace(' ', '', $match[2]);
-            return [self::INDEX => $index];
+            return array(self::INDEX => $index);
         } else {
             if (isset($match[3])) {
                 $multipleTerm = str_replace($match[3], '', $match[2]);
@@ -813,7 +914,7 @@ class Emogrifier extends \Pelago\Emogrifier
             if (!strlen($multiplier)) {
                 $multiplier = 1;
             } elseif ($multiplier === 0) {
-                return [self::INDEX => $index];
+                return array(self::INDEX => $index);
             } else {
                 $multiplier = (int) $multiplier;
             }
@@ -822,7 +923,7 @@ class Emogrifier extends \Pelago\Emogrifier
                 $index += abs($multiplier);
             }
 
-            return [self::MULTIPLIER => $multiplier, self::INDEX => $index];
+            return array(self::MULTIPLIER => $multiplier, self::INDEX => $index);
         }
     }
 
@@ -851,10 +952,10 @@ class Emogrifier extends \Pelago\Emogrifier
             return $this->caches[self::CACHE_KEY_CSS_DECLARATION_BLOCK][$cssDeclarationBlock];
         }
 
-        $properties = [];
+        $properties = array();
         $declarations = explode(';', $cssDeclarationBlock);
         foreach ($declarations as $declaration) {
-            $matches = [];
+            $matches = array();
             if (!preg_match('/ *([A-Za-z\\-]+) *: *([^;]+) */', $declaration, $matches)) {
                 continue;
             }
